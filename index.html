@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLTF Animation Viewer (Top-Down)</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #animation-selector {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #animation-selector button {
+            display: block;
+            margin: 5px 0;
+        }
+        #animation-info {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="animation-selector">
+        <div id="animation-info">Animation: <span id="current-animation-name">None</span> (<span id="current-animation-index">0</span>/<span id="total-animations">0</span>)</div>
+        <button id="prev-button">Previous</button>
+        <button id="next-button">Next</button>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, mixer, clock, controls;
+        const animations = [];
+        let currentAnimationAction = null;
+        let currentAnimationIndex = 0;
+
+        init();
+        animate();
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 90); // Position the camera above the model
+            camera.lookAt(0, 90, 0); // Make the camera look at the center of the scene
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({
+                antialias: true, // Enable antialiasing
+                powerPreference: "high-performance", // Optimize for performance
+            });
+            renderer.setPixelRatio(window.devicePixelRatio || 1); // Use high-DPI scaling
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false; // Disable rotation
+            controls.enablePan = true; // Allow panning
+            controls.enableZoom = true; // Allow zooming
+            controls.minDistance = 0.5; // Minimum zoom distance
+            controls.maxDistance = 2.5; // Maximum zoom distance
+            controls.maxPolarAngle = 0; // Restrict camera to top-down view
+            controls.minPolarAngle = 0; // Restrict camera to top-down view
+
+            // Clock
+            clock = new THREE.Clock();
+
+            // Load GLB model
+            const loader = new GLTFLoader();
+            loader.load('page_10_11.glb', function(gltf) {
+                const model = gltf.scene;
+
+                // Rotate the model 90 degrees counterclockwise along the Z-axis
+                model.rotation.z = 0; // 90 degrees in radians
+                model.rotation.y = 0; 
+
+                scene.add(model);
+
+                // Parse animations
+                mixer = new THREE.AnimationMixer(model);
+                gltf.animations.forEach((clip) => {
+                    animations.push(clip); // Store the animation clip
+                });
+
+                // Update UI with total animations
+                document.getElementById('total-animations').textContent = animations.length;
+
+                // Play the first animation by default
+                if (animations.length > 0) {
+                    playAnimation(currentAnimationIndex);
+                }
+
+                // Add event listeners for Next and Previous buttons
+                document.getElementById('next-button').addEventListener('click', () => {
+                    currentAnimationIndex = (currentAnimationIndex + 1) % animations.length;
+                    playAnimation(currentAnimationIndex);
+                });
+
+                document.getElementById('prev-button').addEventListener('click', () => {
+                    currentAnimationIndex = (currentAnimationIndex - 1 + animations.length) % animations.length;
+                    playAnimation(currentAnimationIndex);
+                });
+            });
+
+            // Lights
+            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2); // Bright ambient light
+            hemisphereLight.position.set(0, 50, 0);
+            scene.add(hemisphereLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+        }
+
+        function playAnimation(index) {
+            if (currentAnimationAction) {
+                currentAnimationAction.stop(); // Stop the current animation
+            }
+            const clip = animations[index]; // Get the animation clip
+            currentAnimationAction = mixer.clipAction(clip); // Create a new action
+            currentAnimationAction.reset().play(); // Play the animation
+
+            // Update UI with current animation name and index
+            document.getElementById('current-animation-name').textContent = clip.name || `Animation ${index + 1}`;
+            document.getElementById('current-animation-index').textContent = index + 1;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta); // Update the animation mixer
+            controls.update(); // Update the camera controls
+            renderer.render(scene, camera); // Render the scene
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
